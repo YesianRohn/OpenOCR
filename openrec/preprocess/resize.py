@@ -597,3 +597,49 @@ def resize_norm_img_srn(img, image_shape):
     c = 1
 
     return np.reshape(img_black, (c, row, col)).astype(np.float32)
+
+
+class NaRecTVResize(object):
+
+    def __init__(self, patch_size=4, max_seq_len=256, min_seq_len=1, **kwargs):
+        from torchvision import transforms as T
+        from torchvision.transforms import functional as F
+        self.patch_size = patch_size
+        self.max_size = max_seq_len * patch_size * patch_size
+        self.min_size = min_seq_len * patch_size * patch_size
+        self.interpolation = T.InterpolationMode.BICUBIC
+        self.F = F
+        transforms = [
+            T.ToTensor(),
+            T.Normalize(0.5, 0.5),
+        ]
+        self.transforms = T.Compose(transforms)
+
+    def __call__(self, data):
+        img = data['image']
+        w, h = img.size
+        orig_area = w * h
+
+        if orig_area > self.max_size:
+            scale = math.sqrt(self.max_size / float(orig_area))
+            w = max(1, int(w * scale))
+            h = max(1, int(h * scale))
+        elif orig_area < self.min_size:
+            scale = math.sqrt(self.min_size / float(orig_area))
+            w = max(1, int(w * scale))
+            h = max(1, int(h * scale))
+
+        new_w = max((w // self.patch_size), 1) * self.patch_size
+        new_h = max((h // self.patch_size), 1) * self.patch_size
+
+        # Resize the image
+        resized_image = self.F.resize(img, (new_h, new_w), interpolation=self.interpolation)
+
+        img = self.transforms(resized_image)
+
+        # Update the data dictionary
+        data['image'] = img
+        
+        r = float(w) / float(h)
+        data['real_ratio'] = max(1, round(r))
+        return data

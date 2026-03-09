@@ -155,7 +155,7 @@ class Trainer(object):
                 self.model, [self.local_rank], find_unused_parameters=False)
 
         # amp
-        self.scaler = (torch.amp.GradScaler() if self.cfg['Global'].get(
+        self.scaler = (torch.cuda.amp.GradScaler() if self.cfg['Global'].get(
             'use_amp', False) else None)
 
         self.logger.info(
@@ -310,6 +310,10 @@ class Trainer(object):
             self.cfg['Train']['sampler'][
                 'resume_iter'] = self.resume_iter - last_whole_epoch_global_step
 
+        img_tensor = True
+        if self.cfg['Train']['loader'].get('collate_fn', None) == 'NoCollator':
+            img_tensor = False
+
         last_whole_epoch_global_step = 0
         for epoch in range(start_epoch, epoch_num + 1):
             if not self.cfg['Global'].get('resume_from_iter',
@@ -343,16 +347,24 @@ class Trainer(object):
                         )
                         continue
 
-                batch_tensor = [t.to(self.device) for t in batch]
-                batch_numpy = [t.numpy() for t in batch]
+                if img_tensor:
+                    batch_tensor = [t.to(self.device) for t in batch]
+                    batch_numpy = [t.numpy() for t in batch]
+                    imgs = batch_tensor[0]
+                else:
+                    imgs = batch[0]
+                    batch[0] = batch[1]
+                    batch_numpy = [np.array(t) for t in batch]
+                    batch_tensor = [torch.from_numpy(t).to(self.device) for t in batch_numpy]
+
                 train_reader_cost += time.time() - reader_start
                 # use amp
                 if self.scaler:
-                    with torch.amp.autocast(device_type=self.device.type,
-                                            dtype=torch.bfloat16):
+                    with torch.cuda.amp.autocast(
+                            enabled=self.device.type == 'cuda'):
                         if self.use_transformers:
                             inputs = {
-                                'pixel_values': batch_tensor[0],
+                                'pixel_values': imgs,
                                 'input_ids': None,
                                 'attention_mask': None,
                                 'labels': batch_tensor[1],
@@ -360,7 +372,7 @@ class Trainer(object):
                             }
                             preds = self.model(**inputs)
                         else:
-                            preds = self.model(batch_tensor[0],
+                            preds = self.model(imgs,
                                                data=batch_tensor[1:])
                         loss = self.loss_class(preds, batch_tensor)
                         loss['loss'] = loss['loss'] / self.accumulation_steps
@@ -375,7 +387,7 @@ class Trainer(object):
                         self.scaler.update()
                         self.optimizer.zero_grad(set_to_none=True)
                 else:
-                    preds = self.model(batch_tensor[0], data=batch_tensor[1:])
+                    preds = self.model(imgs, data=batch_tensor[1:])
                     loss = self.loss_class(preds, batch_tensor)
                     avg_loss = loss['loss']
                     avg_loss.backward()
@@ -533,6 +545,10 @@ class Trainer(object):
         self.logger.info(best_str)
 
     def eval(self):
+        img_tensor = True
+        if self.cfg['Eval']['loader'].get('collate_fn', None) == 'NoCollator':
+            img_tensor = False
+
         self.model.eval()
         with torch.no_grad():
             total_frame = 0.0
@@ -543,18 +559,26 @@ class Trainer(object):
                 position=0,
                 leave=True,
             )
+            
             sum_images = 0
             for idx, batch in enumerate(self.valid_dataloader):
-                batch_tensor = [t.to(self.device) for t in batch]
-                batch_numpy = [t.numpy() for t in batch]
+                if img_tensor:
+                    batch_tensor = [t.to(self.device) for t in batch]
+                    batch_numpy = [t.numpy() for t in batch]
+                    imgs = batch_tensor[0]
+                else:
+                    imgs = batch[0]
+                    batch[0] = batch[1]
+                    batch_numpy = [np.array(t) for t in batch]
+                    batch_tensor = [torch.from_numpy(t).to(self.device) for t in data_numpy]
                 start = time.time()
                 if self.scaler:
                     with torch.cuda.amp.autocast(
                             enabled=self.device.type == 'cuda'):
-                        preds = self.model(batch_tensor[0],
+                        preds = self.model(imgs,
                                            data=batch_tensor[1:])
                 else:
-                    preds = self.model(batch_tensor[0], data=batch_tensor[1:])
+                    preds = self.model(imgs, data=batch_tensor[1:])
 
                 total_time += time.time() - start
                 # Obtain usable results from post-processing methods

@@ -38,6 +38,10 @@ class ListCollator(object):
             data_dict[idx] = torch.from_numpy(data_dict[idx])
         return list(data_dict.values())
 
+class NoCollator(object):
+    def __call__(self, batch):
+        output = [list(d) for d in zip(*batch)]
+        return output
 
 class SSLRotateCollate(object):
     """

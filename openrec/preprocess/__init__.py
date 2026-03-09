@@ -122,6 +122,7 @@ MODULE_MAPPING = {
     'VisionLANResize': '.resize',
     'RecDynamicResize': '.resize',
     'NaSizeResize': '.resize',
+    'NaRecTVResize': '.resize',
 }
 
 

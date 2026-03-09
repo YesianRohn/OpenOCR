@@ -25,6 +25,7 @@ name_to_module = {
     'AutoSTREncoder': '.autostr_encoder',
     'NRTREncoder': '.nrtr_encoder',
     'RepSVTREncoder': '.repvit',
+    'NaViT_ROPE': '.navit_rope',
 }
 
 
