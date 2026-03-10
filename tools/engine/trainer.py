@@ -570,7 +570,7 @@ class Trainer(object):
                     imgs = batch[0]
                     batch[0] = batch[1]
                     batch_numpy = [np.array(t) for t in batch]
-                    batch_tensor = [torch.from_numpy(t).to(self.device) for t in data_numpy]
+                    batch_tensor = [torch.from_numpy(t).to(self.device) for t in batch_numpy]
                 start = time.time()
                 if self.scaler:
                     with torch.cuda.amp.autocast(
