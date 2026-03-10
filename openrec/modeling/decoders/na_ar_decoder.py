@@ -19,7 +19,6 @@ class NaARDecoder(nn.Module):
     Args:
         d_model: the number of expected features in the encoder/decoder inputs (default=512).
         nhead: the number of heads in the multiheadattention models (default=8).
-        num_encoder_layers: the number of sub-encoder-layers in the encoder (default=6).
         num_decoder_layers: the number of sub-decoder-layers in the decoder (default=6).
         dim_feedforward: the dimension of the feedforward network model (default=2048).
         dropout: the dropout value (default=0.1).
@@ -215,75 +214,6 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:, :x.shape[1], :]
         return self.dropout(x)  # .permute([1, 0, 2])
 
-
-class PositionalEncoding_2d(nn.Module):
-    """Inject some information about the relative or absolute position of the
-    tokens in the sequence. The positional encodings have the same dimension as
-    the embeddings, so that the two can be summed. Here, we use sine and cosine
-    functions of different frequencies.
-
-    .. math::
-        \text{PosEncoder}(pos, 2i) = sin(pos/10000^(2i/d_model))
-        \text{PosEncoder}(pos, 2i+1) = cos(pos/10000^(2i/d_model))
-        \text{where pos is the word position and i is the embed idx)
-    Args:
-        d_model: the embed dim (required).
-        dropout: the dropout value (default=0.1).
-        max_len: the max. length of the incoming sequence (default=5000).
-    Examples:
-        >>> pos_encoder = PositionalEncoding(d_model)
-    """
-
-    def __init__(self, dropout, dim, max_len=5000):
-        super(PositionalEncoding_2d, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
-
-        pe = torch.zeros([max_len, dim])
-        position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, dim, 2).float() * (-math.log(10000.0) / dim))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = torch.permute(torch.unsqueeze(pe, 0), [1, 0, 2])
-        self.register_buffer('pe', pe)
-
-        self.avg_pool_1 = nn.AdaptiveAvgPool2d((1, 1))
-        self.linear1 = nn.Linear(dim, dim)
-        self.linear1.weight.data.fill_(1.0)
-        self.avg_pool_2 = nn.AdaptiveAvgPool2d((1, 1))
-        self.linear2 = nn.Linear(dim, dim)
-        self.linear2.weight.data.fill_(1.0)
-
-    def forward(self, x):
-        """Inputs of forward function
-        Args:
-            x: the sequence fed to the positional encoder model (required).
-        Shape:
-            x: [sequence length, batch size, embed dim]
-            output: [sequence length, batch size, embed dim]
-        Examples:
-            >>> output = pos_encoder(x)
-        """
-        w_pe = self.pe[:x.shape[-1], :]
-        w1 = self.linear1(self.avg_pool_1(x).squeeze()).unsqueeze(0)
-        w_pe = w_pe * w1
-        w_pe = torch.permute(w_pe, [1, 2, 0])
-        w_pe = torch.unsqueeze(w_pe, 2)
-
-        h_pe = self.pe[:x.shape[-2], :]
-        w2 = self.linear2(self.avg_pool_2(x).squeeze()).unsqueeze(0)
-        h_pe = h_pe * w2
-        h_pe = torch.permute(h_pe, [1, 2, 0])
-        h_pe = torch.unsqueeze(h_pe, 3)
-
-        x = x + w_pe + h_pe
-        x = torch.permute(
-            torch.reshape(x,
-                          [x.shape[0], x.shape[1], x.shape[2] * x.shape[3]]),
-            [2, 0, 1],
-        )
-
-        return self.dropout(x)
 
 
 class Embeddings(nn.Module):
